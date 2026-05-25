@@ -1,39 +1,7 @@
 vim9script
 
-var sources: dict<dict<any>> = {}
+var pickers: dict<dict<any>> = {}
 var states: dict<dict<any>> = {}
-
-def InitBuiltins()
-  if !empty(sources)
-    return
-  endif
-
-  sources['line'] = {
-    gather: function('unite#source#line#GatherCandidates'),
-  }
-  sources['menu'] = {
-    gather: function('unite#source#menu#GatherCandidates'),
-    default_action: 'execute',
-  }
-  sources['file'] = {
-    gather: function('unite#source#file#GatherCandidates'),
-  }
-  sources['dir'] = {
-    gather: function('unite#source#directory#GatherCandidates'),
-    default_action: 'open',
-  }
-  sources['yank'] = {
-    gather: function('unite#source#yank#GatherCandidates'),
-    default_action: 'setreg',
-  }
-  sources['quickfix'] = {
-    gather: function('unite#source#quickfix#GatherCandidates'),
-  }
-  sources['repo'] = {
-    gather: function('unite#source#repo#GatherCandidates'),
-    default_action: 'open',
-  }
-enddef
 
 def ParseArgv(qargs: string): list<string>
   return split(qargs)
@@ -41,34 +9,33 @@ enddef
 
 def ParseOptions(argv: list<string>): dict<any>
   var opts = {
-    source: '',
-    source_args: [],
+    picker: '',
+    picker_args: [],
     split: true,
     focus: true,
   }
 
   if empty(argv)
-    throw 'Unite: source is required'
+    throw 'Unite: picker is required'
   endif
 
-  opts.source = remove(argv, 0)
+  opts.picker = remove(argv, 0)
 
   for arg in argv
-    add(opts.source_args, arg)
+    add(opts.picker_args, arg)
   endfor
 
   return opts
 enddef
 
-def SourceByName(name: string): dict<any>
-  InitBuiltins()
-  if !has_key(sources, name)
-    throw printf('Unite: source not found: %s', name)
+def PickerByName(name: string): dict<any>
+  if !has_key(pickers, name)
+    throw printf('Unite: picker not found: %s', name)
   endif
-  return sources[name]
+  return pickers[name]
 enddef
 
-def CandidateLabel(candidate: dict<any>, state: dict<any>): string
+def CandidateLabel(candidate: dict<any>): string
   return get(candidate, 'abbr', get(candidate, 'word', ''))
 enddef
 
@@ -171,7 +138,7 @@ def Render(bufnr_value: number, keep_prompt_cursor: bool = false)
   var lines = [state.prompt .. state.query]
   if !empty(state.filtered_candidates)
     for candidate in state.filtered_candidates
-      add(lines, CandidateLabel(candidate, state))
+      add(lines, CandidateLabel(candidate))
     endfor
   endif
 
@@ -202,7 +169,7 @@ enddef
 def SetupSyntax(state: dict<any>)
   syntax clear
 
-  if state.source_name ==# 'line'
+  if get(state.picker, 'syntax', '') ==# 'line-numbers'
     syntax match UniteLineNr /^\s*\d\+:/ containedin=ALL
     highlight default link UniteLineNr LineNr
   endif
@@ -235,8 +202,8 @@ def OpenWindow(opts: dict<any>)
   execute 'resize 10'
 enddef
 
-def PickerBufferName(source_name: string): string
-  return printf('[unite] - %s', source_name)
+def PickerBufferName(name: string): string
+  return printf('[unite] - %s', name)
 enddef
 
 def CloseExistingPickers(skip_winid: number = -1)
@@ -261,7 +228,7 @@ def CloseExistingPickers(skip_winid: number = -1)
 enddef
 
 def SetupBuffer(state: dict<any>)
-  execute 'file ' .. fnameescape(PickerBufferName(state.source_name))
+  execute 'file ' .. fnameescape(PickerBufferName(state.picker_name))
   setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
   setlocal modifiable
   setlocal nolist
@@ -294,9 +261,9 @@ def SetupBuffer(state: dict<any>)
   nnoremap <silent><buffer> A <Cmd>call unite#EnterInsertAtEnd()<CR>
   nnoremap <silent><buffer> <C-h> <Cmd>call unite#DeleteBackwardChar()<CR>
   nnoremap <silent><buffer> <C-l> <Cmd>call unite#RedrawPicker()<CR>
-  nnoremap <silent><buffer> <CR> <Cmd>call unite#ExecuteDefaultAction()<CR>
+  nnoremap <silent><buffer> <CR> <Cmd>call unite#ExecuteAction()<CR>
 
-  inoremap <silent><buffer> <CR> <Esc><Cmd>call unite#ExecuteDefaultActionFromInsert()<CR>
+  inoremap <silent><buffer> <CR> <Esc><Cmd>call unite#ExecuteActionFromInsert()<CR>
   inoremap <silent><buffer> <Esc> <Esc>
   inoremap <silent><expr><buffer> <C-h> unite#InsertBackspace()
   inoremap <silent><expr><buffer> <BS> unite#InsertBackspace()
@@ -317,56 +284,63 @@ def StateForCurrentBuffer(): dict<any>
   return states[key]
 enddef
 
+def FocusOriginWindow(state: dict<any>)
+  if win_id2win(state.context.origin_winid) > 0
+    win_gotoid(state.context.origin_winid)
+  endif
+enddef
+
+def ClosePickerWindow(state: dict<any>)
+  if win_id2win(state.picker_winid) <= 0
+    return
+  endif
+
+  var origin_exists = win_id2win(state.context.origin_winid) > 0
+  if origin_exists
+    win_gotoid(state.context.origin_winid)
+  endif
+  if win_id2win(state.picker_winid) > 0
+    win_gotoid(state.picker_winid)
+    close
+  endif
+  if origin_exists && win_id2win(state.context.origin_winid) > 0
+    win_gotoid(state.context.origin_winid)
+  endif
+enddef
+
+def ExecuteSelectedCandidate()
+  var state = StateForCurrentBuffer()
+  if empty(state.filtered_candidates) || state.selected < 0
+    return
+  endif
+
+  var candidate = state.filtered_candidates[state.selected]
+  var action = get(candidate, 'action', get(state.picker, 'action', v:none))
+  if type(action) != v:t_func
+    throw printf('Unite: action not defined for picker: %s', state.picker_name)
+  endif
+
+  var ctx = {
+    picker_name: state.picker_name,
+    query: state.query,
+    origin_winid: state.context.origin_winid,
+    origin_bufnr: state.context.origin_bufnr,
+    picker_winid: state.picker_winid,
+    picker_bufnr: state.picker_bufnr,
+    options: state.options,
+  }
+  var api = {
+    close: () => ClosePickerWindow(state),
+    focus_origin: () => FocusOriginWindow(state),
+  }
+  action(candidate, ctx, api)
+enddef
+
 export def StartCommand(qargs: string)
   try
     var argv = ParseArgv(qargs)
     var opts = ParseOptions(argv)
-    var source = SourceByName(opts.source)
-    var current_winid = win_getid()
-    var current_bufnr = bufnr('%')
-    var reusing_picker = &filetype ==# 'unite'
-    var origin_winid = current_winid
-    var origin_bufnr = current_bufnr
-    if reusing_picker
-      var previous = StateForCurrentBuffer()
-      origin_winid = previous.context.origin_winid
-      origin_bufnr = previous.context.origin_bufnr
-    endif
-    var ctx = {
-      source_name: opts.source,
-      origin_winid: origin_winid,
-      origin_bufnr: origin_bufnr,
-      options: opts,
-    }
-    var candidates = source.gather(opts.source_args, ctx)
-    if type(candidates) != v:t_list
-      throw printf('Unite: source %s did not return a list', opts.source)
-    endif
-    if empty(candidates)
-      return
-    endif
-
-    CloseExistingPickers(reusing_picker ? current_winid : -1)
-    if !reusing_picker
-      OpenWindow(opts)
-    endif
-    var state = {
-      prompt: '> ',
-      query: '',
-      source_name: opts.source,
-      source: source,
-      options: opts,
-      context: ctx,
-      all_candidates: candidates,
-      filtered_candidates: [],
-      selected: 0,
-      picker_bufnr: bufnr('%'),
-      picker_winid: win_getid(),
-    }
-    states[string(bufnr('%'))] = state
-    SetupBuffer(state)
-    Render(bufnr('%'))
-    EnterInsertAtEnd()
+    Start(opts.picker, opts)
   catch
     echohl ErrorMsg
     echomsg v:exception
@@ -374,8 +348,65 @@ export def StartCommand(qargs: string)
   endtry
 enddef
 
-export def RegisterSource(name: string, source: dict<any>)
-  sources[name] = source
+export def Start(name: string, opts: dict<any> = {})
+  var picker = PickerByName(name)
+  var current_winid = win_getid()
+  var current_bufnr = bufnr('%')
+  var reusing_picker = &filetype ==# 'unite'
+  var origin_winid = current_winid
+  var origin_bufnr = current_bufnr
+  if reusing_picker
+    var previous = StateForCurrentBuffer()
+    origin_winid = previous.context.origin_winid
+    origin_bufnr = previous.context.origin_bufnr
+  endif
+
+  var picker_args = get(opts, 'picker_args', get(opts, 'source_args', []))
+  var ctx = {
+    picker_name: name,
+    origin_winid: origin_winid,
+    origin_bufnr: origin_bufnr,
+    options: opts,
+  }
+  var candidates = picker.source(picker_args, ctx)
+  if type(candidates) != v:t_list
+    throw printf('Unite: picker %s did not return a list', name)
+  endif
+  if empty(candidates)
+    return
+  endif
+
+  CloseExistingPickers(reusing_picker ? current_winid : -1)
+  if !reusing_picker
+    OpenWindow(opts)
+  endif
+  var state = {
+    prompt: '> ',
+    query: '',
+    picker_name: name,
+    picker: picker,
+    options: opts,
+    context: ctx,
+    all_candidates: candidates,
+    filtered_candidates: [],
+    selected: 0,
+    picker_bufnr: bufnr('%'),
+    picker_winid: win_getid(),
+  }
+  states[string(bufnr('%'))] = state
+  SetupBuffer(state)
+  Render(bufnr('%'))
+  EnterInsertAtEnd()
+enddef
+
+export def Register(name: string, picker: dict<any>)
+  if !has_key(picker, 'source') || type(picker.source) != v:t_func
+    throw printf('Unite: picker %s requires source()', name)
+  endif
+  if !has_key(picker, 'action') || type(picker.action) != v:t_func
+    throw printf('Unite: picker %s requires action()', name)
+  endif
+  pickers[name] = picker
 enddef
 
 export def SyncPrompt()
@@ -493,107 +524,7 @@ export def RedrawPicker()
   Render(bufnr('%'))
 enddef
 
-def InferDefaultAction(candidate: dict<any>): string
-  if has_key(candidate, 'action__command')
-    return 'execute'
-  endif
-  if has_key(candidate, 'action__regcontents')
-    return 'setreg'
-  endif
-  if has_key(candidate, 'action__path') || has_key(candidate, 'action__bufnr') || has_key(candidate, 'action__line')
-    return 'open'
-  endif
-
-  return 'setreg'
-enddef
-
-def ResolveDefaultAction(state: dict<any>, candidate: dict<any>): string
-  if has_key(state.source, 'default_action') && !empty(state.source.default_action)
-    return state.source.default_action
-  endif
-  return InferDefaultAction(candidate)
-enddef
-
-def ClosePickerWindow(state: dict<any>)
-  var picker_winnr = win_id2win(state.picker_winid)
-  if picker_winnr <= 0
-    return
-  endif
-
-  var origin_exists = win_id2win(state.context.origin_winid) > 0
-  if origin_exists
-    win_gotoid(state.context.origin_winid)
-  endif
-  if win_id2win(state.picker_winid) > 0
-    win_gotoid(state.picker_winid)
-    close
-  endif
-  if origin_exists && win_id2win(state.context.origin_winid) > 0
-    win_gotoid(state.context.origin_winid)
-  endif
-enddef
-
-def PrepareTargetWindow(state: dict<any>)
-  if win_id2win(state.context.origin_winid) > 0
-    win_gotoid(state.context.origin_winid)
-  endif
-  ClosePickerWindow(state)
-enddef
-
-def ActionOpen(candidate: dict<any>, state: dict<any>)
-  PrepareTargetWindow(state)
-  if has_key(candidate, 'action__path')
-    execute 'edit ' .. fnameescape(candidate.action__path)
-  elseif has_key(candidate, 'action__bufnr')
-    execute printf('buffer %d', candidate.action__bufnr)
-  elseif has_key(candidate, 'action__line')
-    execute printf('buffer %d', state.context.origin_bufnr)
-  else
-    throw 'Unite: open action requires action target'
-  endif
-
-  if has_key(candidate, 'action__line')
-    cursor(candidate.action__line, get(candidate, 'action__col', 1))
-  endif
-enddef
-
-def ActionSetReg(candidate: dict<any>)
-  if has_key(candidate, 'action__regcontents')
-    setreg('"', candidate.action__regcontents, get(candidate, 'action__regtype', 'v'))
-    return
-  endif
-  setreg('"', get(candidate, 'word', ''))
-enddef
-
-def ActionExecute(candidate: dict<any>)
-  if !has_key(candidate, 'action__command')
-    throw 'Unite: execute action requires action__command'
-  endif
-  execute candidate.action__command
-enddef
-
-def ExecuteSelectedCandidate()
-  var state = StateForCurrentBuffer()
-  if empty(state.filtered_candidates) || state.selected < 0
-    return
-  endif
-
-  var candidate = state.filtered_candidates[state.selected]
-  var action = ResolveDefaultAction(state, candidate)
-  if action ==# 'open'
-    ActionOpen(candidate, state)
-  elseif action ==# 'setreg'
-    ActionSetReg(candidate)
-    ClosePickerWindow(state)
-  elseif action ==# 'execute'
-    ClosePickerWindow(state)
-    ActionExecute(candidate)
-  else
-    throw printf('Unite: action not supported: %s', action)
-  endif
-enddef
-
-export def ExecuteDefaultAction()
+export def ExecuteAction()
   try
     SyncSelectionFromCursor(bufnr('%'))
     ExecuteSelectedCandidate()
@@ -604,7 +535,7 @@ export def ExecuteDefaultAction()
   endtry
 enddef
 
-export def ExecuteDefaultActionFromInsert()
+export def ExecuteActionFromInsert()
   try
     var state = StateForCurrentBuffer()
     state.filtered_candidates = FilterCandidates(state)
