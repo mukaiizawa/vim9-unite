@@ -333,7 +333,7 @@ def ExecuteSelectedCandidate()
     close: () => ClosePickerWindow(state),
     focus_origin: () => FocusOriginWindow(state),
   }
-  action(candidate, ctx, api)
+  call(action, [candidate, ctx, api])
 enddef
 
 export def StartCommand(qargs: string)
