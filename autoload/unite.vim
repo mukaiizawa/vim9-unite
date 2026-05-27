@@ -255,8 +255,8 @@ def SetupBuffer(state: dict<any>)
   nnoremap <silent><buffer> cc <Cmd>call unite#ClearPromptAndInsert()<CR>
   nnoremap <silent><buffer> C <Cmd>call unite#ClearPromptAndInsert()<CR>
   nnoremap <silent><buffer> S <Cmd>call unite#ClearPromptAndInsert()<CR>
-  nnoremap <silent><buffer> a <Cmd>call unite#EnterInsertAtEnd()<CR>
-  nnoremap <silent><buffer> i <Cmd>call unite#EnterInsertAtEnd()<CR>
+  nnoremap <silent><buffer> a <Cmd>call unite#AppendAtCursorOrEnd()<CR>
+  nnoremap <silent><buffer> i <Cmd>call unite#InsertAtCursorOrEnd()<CR>
   nnoremap <silent><buffer> I <Cmd>call unite#EnterInsertAtStart()<CR>
   nnoremap <silent><buffer> A <Cmd>call unite#EnterInsertAtEnd()<CR>
   nnoremap <silent><buffer> <C-h> <Cmd>call unite#DeleteBackwardChar()<CR>
@@ -422,9 +422,7 @@ export def SyncPrompt()
     endif
     states[string(bufnr('%'))] = state
     Render(bufnr('%'), was_prompt_line)
-    if mode() =~# '^i'
-      cursor(1, len(state.prompt .. state.query) + 1)
-    elseif was_prompt_line
+    if was_prompt_line
       cursor(1, min([current_col, len(state.prompt .. state.query) + 1]))
     endif
   catch
@@ -458,7 +456,8 @@ export def SyncCursorSelection()
 enddef
 
 export def EnterInsertAtStart()
-  cursor(1, len('> ') + 1)
+  var state = StateForCurrentBuffer()
+  cursor(1, len(state.prompt) + 1)
   startinsert
 enddef
 
@@ -466,6 +465,31 @@ export def EnterInsertAtEnd()
   var state = StateForCurrentBuffer()
   cursor(1, len(state.prompt .. state.query) + 1)
   startinsert!
+enddef
+
+export def InsertAtCursorOrEnd()
+  var state = StateForCurrentBuffer()
+  if line('.') != 1
+    EnterInsertAtEnd()
+    return
+  endif
+
+  var prompt_col = len(state.prompt) + 1
+  cursor(1, max([col('.'), prompt_col]))
+  startinsert
+enddef
+
+export def AppendAtCursorOrEnd()
+  var state = StateForCurrentBuffer()
+  if line('.') != 1
+    EnterInsertAtEnd()
+    return
+  endif
+
+  var prompt_col = len(state.prompt) + 1
+  var target_col = max([col('.') + 1, prompt_col])
+  cursor(1, min([target_col, len(state.prompt .. state.query) + 1]))
+  startinsert
 enddef
 
 export def ClearPromptAndInsert()
