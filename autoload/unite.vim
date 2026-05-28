@@ -336,6 +336,22 @@ def ExecuteSelectedCandidate()
   call(action, [candidate, ctx, api])
 enddef
 
+def ExecuteCandidateUnderCursorOrFirstFromPrompt()
+  SyncSelectionFromCursor(bufnr('%'))
+
+  var state = StateForCurrentBuffer()
+  if empty(state.filtered_candidates)
+    return
+  endif
+
+  if line('.') == 1 && state.selected < 0
+    state.selected = 0
+    states[string(bufnr('%'))] = state
+  endif
+
+  ExecuteSelectedCandidate()
+enddef
+
 export def StartCommand(qargs: string)
   try
     var argv = ParseArgv(qargs)
@@ -550,8 +566,7 @@ enddef
 
 export def ExecuteAction()
   try
-    SyncSelectionFromCursor(bufnr('%'))
-    ExecuteSelectedCandidate()
+    ExecuteCandidateUnderCursorOrFirstFromPrompt()
   catch
     echohl ErrorMsg
     echomsg v:exception
