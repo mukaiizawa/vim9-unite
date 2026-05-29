@@ -189,6 +189,7 @@ Normal mode:
 Insert mode:
 
 - `<CR>`: Execute the current candidate.
+- `<C-c>`: Close the picker and return focus to the origin window when possible.
 - `<Esc>`: Return to Normal mode.
 - `<BS>`: Delete one character backward, but never delete the prompt prefix.
 - `<C-h>`: Same as `<BS>`.
