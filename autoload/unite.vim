@@ -264,7 +264,6 @@ def SetupBuffer(state: dict<any>)
   nnoremap <silent><buffer> <CR> <Cmd>call unite#ExecuteAction()<CR>
 
   inoremap <silent><buffer> <CR> <Esc><Cmd>call unite#ExecuteActionFromInsert()<CR>
-  inoremap <silent><buffer> <C-c> <Esc><Cmd>call unite#CloseCurrent()<CR>
   inoremap <silent><buffer> <Esc> <Esc>
   inoremap <silent><expr><buffer> <C-h> unite#InsertBackspace()
   inoremap <silent><expr><buffer> <BS> unite#InsertBackspace()
