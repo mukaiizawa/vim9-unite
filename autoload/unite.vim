@@ -251,7 +251,7 @@ def SetupBuffer(state: dict<any>)
   nnoremap <silent><buffer> p <Nop>
   nnoremap <silent><buffer> P <Nop>
   nnoremap <silent><buffer> J <Nop>
-  nnoremap <silent><buffer> q <Nop>
+  nnoremap <silent><buffer> q <Cmd>call unite#CloseCurrent()<CR>
   nnoremap <silent><buffer> cc <Cmd>call unite#ClearPromptAndInsert()<CR>
   nnoremap <silent><buffer> C <Cmd>call unite#ClearPromptAndInsert()<CR>
   nnoremap <silent><buffer> S <Cmd>call unite#ClearPromptAndInsert()<CR>
@@ -413,6 +413,11 @@ export def Start(name: string, opts: dict<any> = {})
   SetupBuffer(state)
   Render(bufnr('%'))
   EnterInsertAtEnd()
+enddef
+
+export def CloseCurrent()
+  var state = StateForCurrentBuffer()
+  ClosePickerWindow(state)
 enddef
 
 export def Register(name: string, picker: dict<any>)

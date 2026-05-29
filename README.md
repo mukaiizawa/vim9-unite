@@ -169,6 +169,37 @@ Then run:
 :Unite current-file
 ```
 
+## Key Bindings
+
+Normal mode:
+
+- `<CR>`: Execute the current candidate.
+- `q`: Close the picker and return focus to the origin window when possible.
+- `i`: Enter Insert mode at the current prompt cursor position. When used outside the prompt line, jump to the end of the prompt first.
+- `a`: Enter Insert mode after the current prompt cursor position. When used outside the prompt line, jump to the end of the prompt first.
+- `I`: Enter Insert mode at the start of the query area.
+- `A`: Enter Insert mode at the end of the query area.
+- `cc`: Clear the current query and enter Insert mode.
+- `C`: Clear the current query and enter Insert mode.
+- `S`: Clear the current query and enter Insert mode.
+- `x`: Delete the character under the cursor in the prompt line.
+- `<C-h>`: Delete the last character of the current query and stay in Insert mode.
+- `<C-l>`: Redraw the picker.
+
+Insert mode:
+
+- `<CR>`: Execute the current candidate.
+- `<Esc>`: Return to Normal mode.
+- `<BS>`: Delete one character backward, but never delete the prompt prefix.
+- `<C-h>`: Same as `<BS>`.
+
+Notes:
+
+- The first line is the prompt. Candidate lines start below it.
+- Filtering updates as the prompt text changes.
+- Pressing `<CR>` on the prompt line executes the current selection. When nothing is selected yet, the first candidate is used.
+- Several built-in Vim keys such as `d`, `s`, `r`, `o`, `p`, `J`, and their uppercase variants are intentionally disabled in the picker buffer to avoid accidental edits or conflicting behavior.
+
 ## Design Note
 
 The important boundary is:
